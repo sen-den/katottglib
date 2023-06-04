@@ -1,0 +1,26 @@
+[tool.black]
+line-length = 80
+multi_line_output = 3
+include-trailing-comma = true
+target-version = ['py311']
+extend-exclude = '''
+/(
+    \.git
+  | \.github
+  | \.idea
+  | \.venv
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 80
+force_sort_within_sections = true
+atomic = true
+
+[tool.mypy]
+python_version = "3.11"
+show_error_codes = true
+warn_return_any = false
+pretty = true
+follow_imports = 'silent'
