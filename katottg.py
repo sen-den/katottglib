@@ -6,27 +6,49 @@ from data import load_data
 from data.entity import KatottgEntity
 
 
+__all__ = [
+    "find_by_name",
+    "find_by_id",
+]
+
+
 def find_by_name(
-    name: str, parent: str = None, category: str = None, limit: int = 5
+    name: str, *, parent_id: str = None, category: str = None, limit: int = 5
 ) -> list[KatottgEntity]:
     """
-    Finl CATOTTG entity
+    Find KATOTTG entity by name. Filter by parent, category available.
     :param name: name to search
-    :param parent: Filter by higher level entity
+    :param parent_id: Filter by higher level entity
     :param category: filter by category ('O', 'K', 'P', 'H', 'M', 'T', 'C', 'X', 'B')
     :param limit: limit return
     :return: KatottgEntity list
     """
     df = load_data()
-    return _search_matches(df, name, parent, category, limit)
+    matches = _search_matches(df, name, parent_id, category, limit)
+    return _serialize_entities(df, matches)
+
+
+def find_by_id(
+    katottg_id: str
+) -> KatottgEntity | None:
+    """
+    Find KATOTTG entity by id.
+    :param katottg_id: id to search
+    :return: KatottgEntity if found
+    """
+    df = load_data()
+    parent_filter = df.apply(lambda row: katottg_id in row.values[7], axis=1)
+    matches = df[parent_filter]
+    result = _serialize_entities(df, matches)
+    return result[0] if result else None
 
 
 def _search_matches(
-    df, query, parent: str = None, category: str = None, limit: int = 5
-):
+    df, query, parent_id: str = None, category: str = None, limit: int = 5
+) -> pd.DataFrame:
     # Apply filters for parent and category
-    if parent is not None:
-        parent_filter = df.apply(lambda row: parent in row.values[:5], axis=1)
+    if parent_id is not None:
+        parent_filter = df.apply(lambda row: parent_id in row.values[:5], axis=1)
         df = df[parent_filter]
     if category is not None:
         category_filter = (df["Категорія об’єкта"] == category) | (
