@@ -1,8 +1,12 @@
+import os
+
 import pandas as pd
 
 
-def load_xlsx(file_name: str = "data/kodifikator.xlsx") -> pd.DataFrame:
-    df = pd.read_excel(file_name, skiprows=2, skipfooter=3)
+def load_xlsx() -> pd.DataFrame:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "kodifikator.xlsx")
+    df = pd.read_excel(file_path, skiprows=2, skipfooter=3)
     return df
 
 
