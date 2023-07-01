@@ -12,6 +12,13 @@ Quick start
 Release notes
 -------------
 
+v0.2.0 (2023-07-01)
+...................
+
+Fixes and improvements to performance.
+
+- Dataframe is now persisted with Pickle.
+
 v0.1.0 (2023-06-10)
 ...................
 
