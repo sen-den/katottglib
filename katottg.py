@@ -49,21 +49,20 @@ def _search_matches(
     # Apply filters for parent and category
     if parent_id is not None:
         parent_filter = df.apply(lambda row: parent_id in row.values[:5], axis=1)
-        df = df[parent_filter]
+        df = df[parent_filter].copy()  # Make a copy of the filtered DataFrame
     if category is not None:
         category_filter = (df["Категорія об’єкта"] == category) | (
             df["Назва категорії об’єкта"] == category
         )
-        df = df[category_filter]
+        df = df[category_filter].copy()  # Make a copy of the filtered DataFrame
 
     # Compute similarity scores for the search query against the 'Назва об’єкта' column
     similarity_scores = df["Назва об’єкта"].apply(
         lambda x: SequenceMatcher(None, query, x).ratio()
     )
 
-    # Add similarity scores as a temporary column in the DataFrame
+    # Assign similarity scores to a new column in the DataFrame
     df["Similarity"] = similarity_scores
-    df["Similarity"].fillna(-1)
 
     category_order = ["O", "K", "P", "H", "M", "T", "C", "X", "B"][::-1]
     df["Порядок категорій"] = df["Категорія об’єкта"].map(
