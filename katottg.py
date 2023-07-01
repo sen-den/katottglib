@@ -48,7 +48,7 @@ def _search_matches(
 ) -> pd.DataFrame:
     # Apply filters for parent and category
     if parent_id is not None:
-        parent_filter = df.apply(lambda row: parent_id in row.values[:5], axis=1)
+        parent_filter = df.iloc[:, :5].eq(parent_id).any(axis=1)
         df = df[parent_filter].copy()  # Make a copy of the filtered DataFrame
     if category is not None:
         category_filter = (df["Категорія об’єкта"] == category) | (
