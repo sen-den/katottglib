@@ -5,7 +5,9 @@ KATOTTG lib
 Quick start
 -----------
 
-To be done...
+- Install with `pip install katottglib`
+- Import `import katottglib`
+- Search for entities with `find_by_name` `katottglib.find_by_name(name="Lviv")`
 
 Release notes
 -------------
