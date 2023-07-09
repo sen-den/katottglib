@@ -1,9 +1,9 @@
-from difflib import SequenceMatcher, get_close_matches
+from difflib import SequenceMatcher
 
 import pandas as pd
 
-from data import load_data
-from data.entity import KatottgEntity
+from .data import load_data
+from .data.entity import KatottgEntity
 
 
 __all__ = [
