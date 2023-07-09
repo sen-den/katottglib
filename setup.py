@@ -5,6 +5,8 @@ setup(
     version='0.2.3',
     packages=['katottglib'],
     install_requires=[
+        'pandas~=2.0.0',
+        'openpyxl~=3.1.0',
     ],
     author='Denis Senchishen',
     author_email='dsenchishen@icloud.com',
