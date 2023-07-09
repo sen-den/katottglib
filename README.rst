@@ -12,6 +12,13 @@ Quick start
 Release notes
 -------------
 
+v0.2.1 (2023-07-09)
+...................
+
+Fixes and improvements to performance.
+
+- data/kodifikator.xlsx is included into the dist.
+
 v0.2.0 (2023-07-01)
 ...................
 
