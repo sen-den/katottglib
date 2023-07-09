@@ -12,6 +12,12 @@ Quick start
 Release notes
 -------------
 
+v0.2.4 (2023-07-10)
+...................
+
+Fix installation by adding setup.py install_requires
+
+
 v0.2.3 (2023-07-10)
 ...................
 
