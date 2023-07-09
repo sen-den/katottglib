@@ -12,6 +12,11 @@ Quick start
 Release notes
 -------------
 
+v0.2.3 (2023-07-10)
+...................
+
+Fix installation by refining the structure
+
 v0.2.2 (2023-07-10)
 ...................
 
