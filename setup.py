@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='katottglib',
-    version='0.2.1',
+    version='0.2.2',
     packages=['katottglib'],
     install_requires=[
     ],
