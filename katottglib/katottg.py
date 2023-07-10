@@ -2,8 +2,8 @@ from difflib import SequenceMatcher
 
 import pandas as pd
 
-from .data import load_data
-from .data.entity import KatottgEntity
+from katottglib.data import load_data
+from katottglib.data.entity import KatottgEntity
 
 
 __all__ = [
