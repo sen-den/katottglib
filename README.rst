@@ -12,6 +12,11 @@ Quick start
 Release notes
 -------------
 
+v0.2.6 (2023-07-10)
+...................
+
+Try to fix continuation import errors on some installations.
+
 v0.2.5 (2023-07-10)
 ...................
 
