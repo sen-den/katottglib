@@ -12,6 +12,12 @@ Quick start
 Release notes
 -------------
 
+v0.2.5 (2023-07-10)
+...................
+
+Fix import statements to be consistent.
+
+
 v0.2.4 (2023-07-10)
 ...................
 
