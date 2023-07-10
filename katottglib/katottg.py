@@ -3,7 +3,7 @@ from difflib import SequenceMatcher
 import pandas as pd
 
 from katottglib.data import load_data
-from katottglib.data.entity import KatottgEntity
+from katottglib.entity import KatottgEntity
 
 
 __all__ = [
