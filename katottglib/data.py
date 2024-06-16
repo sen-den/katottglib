@@ -7,7 +7,7 @@ DATA_FILE_PATH = "kodifikator_data.pkl"
 def load_xlsx() -> pd.DataFrame:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(script_dir, "kodifikator.xlsx")
-    df = pd.read_excel(file_path, skiprows=2, skipfooter=3)
+    df = pd.read_excel(file_path, skiprows=0, skipfooter=0)
     return df
 
 

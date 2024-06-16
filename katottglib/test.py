@@ -8,7 +8,7 @@ class KatottgSearchTestCase(unittest.TestCase):
         cases = (
             ("Херсон", "UA65100150010064384"),
             ("Миколаїв", "UA46100110010094231"),
-            ("Миколаївка", "UA05100090120011921"),
+            ("Миколаївка", "UA01160150010037397"),
             ("Червона Поляна", "UA05100110150052879"),
         )
         for input_query, expected_id in cases:
