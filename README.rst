@@ -12,6 +12,11 @@ Quick start
 Release notes
 -------------
 
+v0.3.1 (2024-06-17)
+...................
+
+Unpin pandas and openpyxl versions - previous version was uninstallable if pandas 2.1 required.
+
 v0.3.0 (2024-06-16)
 ...................
 

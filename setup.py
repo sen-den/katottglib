@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='katottglib',
-    version='0.3.0',
+    version='0.3.1',
     packages=['katottglib'],
     install_requires=[
         'pandas',
