@@ -1,109 +1,258 @@
+"""Search over the KATOTTG codifier."""
+
 from difflib import SequenceMatcher
 
 import pandas as pd
 
-from katottglib.data import load_data
+from katottglib.data import (
+    CATEGORIES,
+    TOP_LEVEL_CATEGORIES,
+    children_index,
+    load_data,
+    normalize,
+    normalize_query,
+    position_index,
+)
 from katottglib.entity import KatottgEntity
-
 
 __all__ = [
     "find_by_name",
     "find_by_id",
+    "find_children",
+    "find_top_level",
 ]
+
+#: Below this similarity a fuzzy hit is noise rather than a suggestion.
+DEFAULT_MIN_SIMILARITY = 0.6
+
+_EXACT, _PREFIX, _CONTAINS, _FUZZY = 0, 1, 2, 3
+
+_CATEGORY_BY_NAME = {normalize(name): code for code, name in CATEGORIES.items()}
 
 
 def find_by_name(
-    name: str, *, parent_id: str = None, category: str = None, limit: int = 5
+    name: str,
+    *,
+    parent_id: str = None,
+    category=None,
+    limit: int = 5,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
 ) -> list[KatottgEntity]:
     """
-    Find KATOTTG entity by name. Filter by parent, category available.
-    :param name: name to search
-    :param parent_id: Filter by higher level entity
-    :param category: filter by category ('O', 'K', 'P', 'H', 'M', 'T', 'C', 'X', 'B')
-    :param limit: limit return
-    :return: KatottgEntity list
+    Find codifier objects by name.
+
+    :param name: name to search; an empty name lists the candidates
+    :param parent_id: keep only descendants of this object, it excluded
+    :param category: one code, several codes, a comma separated string,
+        or a category name ('O', ('O', 'K'), 'O,K', 'Області та АРК')
+    :param limit: maximum number of results
+    :param min_similarity: similarity a fuzzy hit needs to be offered
+    :return: KatottgEntity list, best match first
     """
-    df = load_data()
-    matches = _search_matches(df, name, parent_id, category, limit)
-    return _serialize_entities(df, matches)
+    if limit <= 0:
+        return []
+
+    frame = load_data()
+    candidates = _candidates(frame, parent_id, category)
+    if candidates.empty:
+        return []
+
+    matches = _rank(candidates, normalize_query(name), limit, min_similarity)
+    return _serialize(frame, matches)
 
 
-def find_by_id(
-    katottg_id: str
-) -> KatottgEntity | None:
+def find_by_id(katottg_id: str) -> KatottgEntity | None:
+    """Find one codifier object by its exact identifier."""
+    frame = load_data()
+    position = position_index(frame).get(katottg_id)
+    if position is None:
+        return None
+    return _serialize(frame, frame.iloc[[position]])[0]
+
+
+def find_children(
+    parent_id: str,
+    *,
+    name: str = "",
+    category=None,
+    limit: int = 5,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
+) -> list[KatottgEntity]:
+    """Descendants of ``parent_id``; the object itself is never returned."""
+    return find_by_name(
+        name,
+        parent_id=parent_id,
+        category=category,
+        limit=limit,
+        min_similarity=min_similarity,
+    )
+
+
+def find_top_level(
+    name: str = "",
+    *,
+    limit: int = 30,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
+) -> list[KatottgEntity]:
     """
-    Find KATOTTG entity by id.
-    :param katottg_id: id to search
-    :return: KatottgEntity if found
+    The 27 objects a region picker must offer: 24 oblasts, Crimea, and
+    the two cities with special status.
     """
-    df = load_data()
-    parent_filter = df.apply(lambda row: katottg_id in row.values[7], axis=1)
-    matches = df[parent_filter]
-    result = _serialize_entities(df, matches)
-    return result[0] if result else None
+    return find_by_name(
+        name,
+        category=TOP_LEVEL_CATEGORIES,
+        limit=limit,
+        min_similarity=min_similarity,
+    )
 
 
-def _search_matches(
-    df, query, parent_id: str = None, category: str = None, limit: int = 5
-) -> pd.DataFrame:
-    # Apply filters for parent and category
+def parse_categories(category) -> list[str] | None:
+    """
+    Accept a code, a name, a comma separated string or an iterable.
+
+    ``None`` and a blank value mean "no filter". A value that names no
+    known category returns an empty list, which matches nothing: asking
+    for a category that does not exist must not quietly return
+    everything.
+    """
+    if category is None:
+        return None
+    if isinstance(category, str):
+        parts = [part.strip() for part in category.split(",")]
+    else:
+        parts = [str(part).strip() for part in category]
+
+    parts = [part for part in parts if part]
+    if not parts:
+        return None
+
+    codes = []
+    for part in parts:
+        if part in CATEGORIES:
+            code = part
+        else:
+            code = _CATEGORY_BY_NAME.get(normalize(part))
+        if code is not None and code not in codes:
+            codes.append(code)
+    return codes
+
+
+def _candidates(frame, parent_id, category) -> pd.DataFrame:
     if parent_id is not None:
-        parent_filter = df.iloc[:, :5].eq(parent_id).any(axis=1)
-        df = df[parent_filter].copy()  # Make a copy of the filtered DataFrame
-    if category is not None:
-        category_filter = (df["Категорія об’єкта"] == category) | (
-            df["Назва категорії об’єкта"] == category
-        )
-        df = df[category_filter].copy()  # Make a copy of the filtered DataFrame
+        positions = children_index(frame).get(parent_id)
+        if not positions:
+            return frame.iloc[0:0]
+        candidates = frame.iloc[positions]
+    else:
+        candidates = frame
 
-    # Compute similarity scores for the search query against the 'Назва об’єкта' column
-    similarity_scores = df["Назва об’єкта"].apply(
-        lambda x: SequenceMatcher(None, query, x).ratio()
+    codes = parse_categories(category)
+    if codes is not None:
+        candidates = candidates[candidates["category"].isin(codes)]
+    return candidates
+
+
+def _rank(candidates, query, limit, min_similarity) -> pd.DataFrame:
+    if not query:
+        ordered = candidates.sort_values(by=["category_order", "name", "id"])
+        return ordered.head(limit)
+
+    names = candidates["search_name"]
+    exact = names == query
+    prefix = names.str.startswith(query) & ~exact
+    contains = names.str.contains(query, regex=False) & ~prefix & ~exact
+
+    tier = pd.Series(_FUZZY, index=candidates.index, dtype="int8")
+    tier[contains] = _CONTAINS
+    tier[prefix] = _PREFIX
+    tier[exact] = _EXACT
+
+    matched = candidates[tier < _FUZZY].copy()
+    matched["tier"] = tier[tier < _FUZZY]
+    matched["similarity"] = 1.0
+
+    #: Similarity is a fallback for a misspelling, not a filler for a
+    #: short result list. Offering "Крива" to someone who typed "Київ"
+    #: is how an oblast ends up in the settlement field.
+    if matched.empty:
+        matched = _fuzzy(candidates, query, limit, min_similarity)
+    if matched.empty:
+        return candidates.iloc[0:0]
+
+    ordered = matched.sort_values(
+        #: Within a tier the name closest in length to the query is the
+        #: likeliest intent ("Херсо" -> Херсон, not Херсонська), then the
+        #: broader object, then a stable order.
+        by=[
+            "tier",
+            "similarity",
+            "name_length",
+            "category_order",
+            "name",
+            "id",
+        ],
+        ascending=[True, False, True, True, True, True],
     )
-
-    # Assign similarity scores to a new column in the DataFrame
-    df["Similarity"] = similarity_scores
-
-    category_order = ["O", "K", "P", "H", "M", "T", "C", "X", "B"][::-1]
-    df["Порядок категорій"] = df["Категорія об’єкта"].map(
-        {v: k for k, v in enumerate(category_order)}
-    )
-
-    # Sort the DataFrame by 'Категорія об’єкта' column in the desired order
-    df_sorted = (
-        df[df["Категорія об’єкта"].isin(category_order)]
-        .sort_values(
-            by=["Similarity", "Категорія об’єкта", "Назва об’єкта"],
-            ascending=False,
-        )
-        .head(limit)
-    )
-
-    return df_sorted
+    return ordered.head(limit)
 
 
-def _serialize_entities(df, search_results):
-    serialized_results = []
+def _fuzzy(candidates, query, limit, min_similarity) -> pd.DataFrame:
+    """
+    Similarity pass over the candidates that open with the same two
+    characters as the query. A typo in the opening is not worth scanning
+    30k names, and without that anchor a four letter query such as
+    "Київ" scores "Крива" above 0.6 purely on shared letters.
+    """
+    if candidates.empty or limit <= 0:
+        return candidates.iloc[0:0]
 
-    for _, row in search_results.iterrows():
+    anchor = query[:2]
+    narrowed = candidates[candidates["search_name"].str.startswith(anchor)]
+    if narrowed.empty:
+        return candidates.iloc[0:0]
+
+    matcher = SequenceMatcher(None, autojunk=False)
+    matcher.set_seq2(query)
+
+    scores = []
+    for name in narrowed["search_name"]:
+        matcher.set_seq1(name)
+        if (
+            matcher.real_quick_ratio() < min_similarity
+            or matcher.quick_ratio() < min_similarity
+        ):
+            scores.append(0.0)
+            continue
+        scores.append(matcher.ratio())
+
+    scored = narrowed.copy()
+    scored["similarity"] = scores
+    scored["tier"] = _FUZZY
+    scored = scored[scored["similarity"] >= min_similarity]
+    return scored.nlargest(limit, "similarity")
+
+
+def _serialize(frame, matches) -> list[KatottgEntity]:
+    positions = position_index(frame)
+    results = []
+
+    for row in matches.itertuples():
         entity = KatottgEntity(
-            row["id"], row["Назва об’єкта"], row["Назва категорії об’єкта"]
+            row.id, row.name, row.category_name, category_code=row.category
         )
-        parents = [
-            parent_id
-            for parent_id in row.iloc[:5]
-            if isinstance(parent_id, str)
-        ][:-1]
-
-        for parent_id in parents[::-1]:
-            parent_row = df[df["id"] == parent_id]
-            parent_entity = KatottgEntity(
-                parent_row["id"].values[0],
-                parent_row["Назва об’єкта"].values[0],
-                parent_row["Назва категорії об’єкта"].values[0],
+        for ancestor_id in reversed(row.ancestors):
+            position = positions.get(ancestor_id)
+            if position is None:
+                continue
+            ancestor = frame.iloc[position]
+            entity.add_parent(
+                KatottgEntity(
+                    ancestor["id"],
+                    ancestor["name"],
+                    ancestor["category_name"],
+                    category_code=ancestor["category"],
+                )
             )
-            entity.add_parent(parent_entity)
+        results.append(entity)
 
-        serialized_results.append(entity)
-
-    return serialized_results
+    return results
