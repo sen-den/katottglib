@@ -1,2 +1,4 @@
-pandas~=2.0.0
-openpyxl~=3.1.0
+# Lower bounds only. A compatible-release pin on pandas ages badly: 2.0.x was
+# built against numpy 1.x and no longer imports beside a current numpy.
+pandas>=2.0
+openpyxl>=3.1
