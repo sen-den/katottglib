@@ -2,10 +2,13 @@ import unittest
 
 from katottglib import (
     CATEGORIES,
+    SETTLEMENT_CATEGORIES,
     TOP_LEVEL_CATEGORIES,
+    collation_key,
     find_by_id,
     find_by_name,
     find_children,
+    find_settlements,
     find_top_level,
 )
 from katottglib.katottg import parse_categories
@@ -49,9 +52,18 @@ class KatottgSearchTestCase(unittest.TestCase):
         self.assertEqual(len(find_by_name("Червона Поляна", limit=3)), 3)
         self.assertLess(len(find_by_name("Червона Поляна", limit=100)), 100)
 
-    def test_exact_match_outranks_a_longer_name(self):
-        self.assertEqual("Херсон", find_by_name("Херсо")[0].name)
+    def test_an_exact_match_outranks_a_longer_name(self):
         self.assertEqual("Київ", find_by_name("Київ")[0].name)
+        self.assertEqual("K", find_by_name("Київ")[0].category_code)
+
+    def test_the_broader_object_comes_first_within_a_tier(self):
+        """
+        Unfiltered, "Херсо" is answered with the oblast. Asked for the
+        settlements, the same query is answered with the city.
+        """
+        self.assertEqual("O", find_by_name("Херсо")[0].category_code)
+        self.assertEqual("Херсон", find_settlements("Херсо")[0].name)
+        self.assertEqual("Івано-Франківськ", find_settlements("Іва")[0].name)
 
 
 class FindByIdTestCase(unittest.TestCase):
@@ -211,7 +223,51 @@ class QueryNormalisationTestCase(unittest.TestCase):
         names = [
             entity.name for entity in entities if entity.category_code == "P"
         ]
-        self.assertEqual(sorted(names, key=str.casefold), names)
+        self.assertEqual(sorted(names, key=collation_key), names)
+
+    def test_names_sort_in_ukrainian_order(self):
+        """Unicode puts "і" after "я", so a plain sort buries Бі... names."""
+        names = [
+            entity.name
+            for entity in find_children(KYIVSKA, category="P", limit=10)
+        ]
+        self.assertEqual("Білоцерківський", names[0])
+        self.assertNotEqual(sorted(names, key=str.casefold), names)
+
+
+class SettlementTestCase(unittest.TestCase):
+    def test_only_places_a_person_can_live_in(self):
+        codes = {
+            entity.category_code for entity in find_settlements("", limit=200)
+        }
+        self.assertTrue(codes <= set(SETTLEMENT_CATEGORIES))
+        self.assertNotIn("O", codes)
+        self.assertNotIn("P", codes)
+        self.assertNotIn("H", codes)
+        self.assertNotIn("B", codes)
+
+    def test_the_capital_is_a_settlement(self):
+        self.assertEqual(KYIV, find_settlements("Київ")[0].entity_id)
+
+    def test_a_word_of_the_name_outranks_a_mere_occurrence(self):
+        """
+        "Нова Збур'ївка" starts a word with the query; "Новозбур'ївка"
+        only contains it. The first is the likelier intent.
+        """
+        names = [
+            entity.name for entity in find_settlements("Збур'ївка", limit=10)
+        ]
+        self.assertEqual("Збур’ївка", names[0])
+        self.assertLess(
+            names.index("Нова Збур’ївка"), names.index("Новозбур’ївка")
+        )
+        self.assertLess(
+            names.index("Стара Збур’ївка"), names.index("Новозбур’ївка")
+        )
+
+    def test_a_settlement_search_can_be_narrowed_to_an_oblast(self):
+        entities = find_settlements("Червона Поляна", parent_id=KHERSONSKA)
+        self.assertEqual("UA65060130090033121", entities[0].entity_id)
 
 
 class EntityContractTestCase(unittest.TestCase):

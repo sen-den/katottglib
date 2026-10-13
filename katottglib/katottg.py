@@ -1,11 +1,13 @@
 """Search over the KATOTTG codifier."""
 
 from difflib import SequenceMatcher
+import re
 
 import pandas as pd
 
 from katottglib.data import (
     CATEGORIES,
+    SETTLEMENT_CATEGORIES,
     TOP_LEVEL_CATEGORIES,
     children_index,
     load_data,
@@ -19,13 +21,18 @@ __all__ = [
     "find_by_name",
     "find_by_id",
     "find_children",
+    "find_settlements",
     "find_top_level",
 ]
 
 #: Below this similarity a fuzzy hit is noise rather than a suggestion.
 DEFAULT_MIN_SIMILARITY = 0.6
 
-_EXACT, _PREFIX, _CONTAINS, _FUZZY = 0, 1, 2, 3
+_EXACT, _PREFIX, _WORD, _CONTAINS, _FUZZY = 0, 1, 2, 3, 4
+
+#: A word of the name starting with the query: "Поляна" should find
+#: "Червона Поляна" ahead of a name that merely contains those letters.
+_WORD_BOUNDARY = r"(?:^|[\s\-'])"
 
 _CATEGORY_BY_NAME = {normalize(name): code for code, name in CATEGORIES.items()}
 
@@ -106,6 +113,26 @@ def find_top_level(
     )
 
 
+def find_settlements(
+    name: str = "",
+    *,
+    parent_id: str = None,
+    limit: int = 15,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
+) -> list[KatottgEntity]:
+    """
+    Places a person can say they live in: the two cities with special
+    status, cities, urban-type settlements, settlements and villages.
+    """
+    return find_by_name(
+        name,
+        parent_id=parent_id,
+        category=SETTLEMENT_CATEGORIES,
+        limit=limit,
+        min_similarity=min_similarity,
+    )
+
+
 def parse_categories(category) -> list[str] | None:
     """
     Accept a code, a name, a comma separated string or an iterable.
@@ -154,16 +181,24 @@ def _candidates(frame, parent_id, category) -> pd.DataFrame:
 
 def _rank(candidates, query, limit, min_similarity) -> pd.DataFrame:
     if not query:
-        ordered = candidates.sort_values(by=["category_order", "name", "id"])
+        ordered = candidates.sort_values(
+            by=["category_order", "sort_name", "id"]
+        )
         return ordered.head(limit)
 
     names = candidates["search_name"]
     exact = names == query
     prefix = names.str.startswith(query) & ~exact
-    contains = names.str.contains(query, regex=False) & ~prefix & ~exact
+    word = (
+        names.str.contains(_WORD_BOUNDARY + re.escape(query), regex=True)
+        & ~prefix
+        & ~exact
+    )
+    contains = names.str.contains(query, regex=False) & ~word & ~prefix & ~exact
 
     tier = pd.Series(_FUZZY, index=candidates.index, dtype="int8")
     tier[contains] = _CONTAINS
+    tier[word] = _WORD
     tier[prefix] = _PREFIX
     tier[exact] = _EXACT
 
@@ -180,15 +215,15 @@ def _rank(candidates, query, limit, min_similarity) -> pd.DataFrame:
         return candidates.iloc[0:0]
 
     ordered = matched.sort_values(
-        #: Within a tier the name closest in length to the query is the
-        #: likeliest intent ("Херсо" -> Херсон, not Херсонська), then the
-        #: broader object, then a stable order.
+        #: Within a tier the broader object comes first — a city before a
+        #: village of the same name — then the name closest in length to
+        #: the query, then a stable order.
         by=[
             "tier",
             "similarity",
-            "name_length",
             "category_order",
-            "name",
+            "name_length",
+            "sort_name",
             "id",
         ],
         ascending=[True, False, True, True, True, True],

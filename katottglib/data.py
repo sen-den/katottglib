@@ -11,8 +11,10 @@ import pandas as pd
 __all__ = [
     "CATEGORIES",
     "CATEGORY_ORDER",
+    "SETTLEMENT_CATEGORIES",
     "TOP_LEVEL_CATEGORIES",
     "children_index",
+    "collation_key",
     "load_data",
     "normalize",
     "normalize_query",
@@ -41,6 +43,12 @@ CATEGORY_ORDER = {code: i for i, code in enumerate(CATEGORIES)}
 #: offers only "O" cannot represent Kyiv or Sevastopol.
 TOP_LEVEL_CATEGORIES = ("O", "K")
 
+#: The categories an answer to "which settlement do you live in" can take:
+#: the two cities with special status, cities, urban-type settlements,
+#: settlements and villages. Oblasts, raions, hromadas and city districts
+#: are places on the map, but nobody lives "in" one.
+SETTLEMENT_CATEGORIES = ("K", "M", "T", "X", "C")
+
 LEVEL_COLUMNS = (
     "Перший рівень",
     "Другий рівень",
@@ -57,13 +65,27 @@ CACHE_DIR_ENV = "KATOTTGLIB_CACHE_DIR"
 
 #: Bump whenever _prepare() changes the shape of the frame, so an
 #: upgrade cannot be served a cache built by the previous release.
-LAYOUT_VERSION = 3
+LAYOUT_VERSION = 4
+
+#: The Ukrainian alphabet in its own order. Unicode sorts "і" after "я",
+#: because the Cyrillic block was laid out for Russian; "Білозерка" then
+#: lands after "Бучанський" in any plain sort.
+UKRAINIAN_ALPHABET = " '-0123456789абвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
+_COLLATION = {
+    letter: chr(0x100 + index)
+    for index, letter in enumerate(UKRAINIAN_ALPHABET)
+}
 
 #: Settlement type prefixes a person types but the codifier does not store.
 _QUERY_PREFIXES = re.compile(
     r"^(м|с|смт|сщ|c|m)[\.\s]+",
     re.IGNORECASE,
 )
+
+#: A type spelled out on its own is not a name: somebody typing "смт" has
+#: not started the name yet. One letter types are left alone, so that
+#: find_by_name("м") still searches rather than listing the codifier.
+_BARE_TYPES = frozenset({"смт", "сщ"})
 _APOSTROPHES = str.maketrans({c: "'" for c in "’ʼ`´‘"})
 _WHITESPACE = re.compile(r"\s+")
 
@@ -80,8 +102,24 @@ def normalize(value) -> str:
 
 
 def normalize_query(value) -> str:
-    """Normalise a user query and drop a leading settlement type."""
-    return _QUERY_PREFIXES.sub("", normalize(value)).strip()
+    """Normalise a user query and drop the settlement type it opens with."""
+    query = _QUERY_PREFIXES.sub("", normalize(value)).strip()
+    return "" if query in _BARE_TYPES else query
+
+
+def collation_key(value) -> str:
+    """
+    A string that sorts in Ukrainian alphabetical order.
+
+    Each known character maps to one above U+0100 in alphabet order, so a
+    plain string comparison orders names the way a Ukrainian index does.
+    Anything else is kept behind U+FFFF, which sorts it after the whole
+    alphabet and keeps the order total whatever the input.
+    """
+    return "".join(
+        _COLLATION.get(character) or "￿" + character
+        for character in normalize(value)
+    )
 
 
 def _source_path() -> str:
@@ -223,6 +261,7 @@ def _prepare(frame: pd.DataFrame) -> pd.DataFrame:
         prepared["category"].map(CATEGORY_ORDER).fillna(len(CATEGORIES))
     )
     prepared["search_name"] = prepared["name"].map(normalize)
+    prepared["sort_name"] = prepared["name"].map(collation_key)
     prepared["name_length"] = prepared["name"].astype(str).str.len()
     #: Ancestors from the broadest down to the direct parent, self
     #: excluded. Levels repeat for objects such as Kyiv's districts,

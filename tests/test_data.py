@@ -171,6 +171,36 @@ class NormalisationTestCase(unittest.TestCase):
         self.assertEqual("ставище", D.normalize_query("смт Ставище"))
         self.assertEqual("осична", D.normalize_query("с. Осична"))
 
+    def test_a_type_on_its_own_is_not_a_query(self):
+        """Somebody who typed "смт" has not started the name yet."""
+        for typed in ("смт", "смт ", " СМТ ", "сщ", "м.", "м. ", "с."):
+            self.assertEqual("", D.normalize_query(typed), typed)
+
+    def test_a_one_letter_type_still_searches(self):
+        """find_by_name("м") must search, not list the whole codifier."""
+        self.assertEqual("м", D.normalize_query("м"))
+        self.assertEqual("с", D.normalize_query("с"))
+
+    def test_collation_follows_the_ukrainian_alphabet(self):
+        """ "і" comes after "и", not after "я" as Unicode has it."""
+        names = ["Бучанський", "Білоцерківський", "Бориспільський"]
+        self.assertEqual(
+            ["Білоцерківський", "Бориспільський", "Бучанський"],
+            sorted(names, key=D.collation_key),
+        )
+        self.assertNotEqual(
+            sorted(names, key=D.collation_key), sorted(names, key=str.casefold)
+        )
+
+    def test_collation_is_total_for_anything_else(self):
+        for value in ("Lwów", "Київ", "", "123", None, "\U0010FFFF", "🙂"):
+            self.assertIsInstance(D.collation_key(value), str)
+        self.assertEqual(D.collation_key("Київ"), D.collation_key("КИЇВ"))
+
+    def test_an_unknown_character_sorts_after_the_alphabet(self):
+        self.assertLess(D.collation_key("я"), D.collation_key("ß"))
+        self.assertLess(D.collation_key("Ялта"), D.collation_key("Zurich"))
+
     def test_a_name_that_merely_starts_with_a_type_letter_survives(self):
         """'Мала Виска' must not become 'ала Виска'."""
         self.assertEqual("мала виска", D.normalize_query("Мала Виска"))
