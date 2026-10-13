@@ -65,6 +65,35 @@ is used by default.
 Release notes
 -------------
 
+v1.1.0 (2026-10-13)
+...................
+
+The pieces an address picker had to re-implement on top of 1.0.0.
+
+Added
+
+- ``find_settlements()`` — the places a person can say they live in: the
+  two cities with special status, cities, urban-type settlements,
+  settlements and villages. ``SETTLEMENT_CATEGORIES`` holds the codes.
+- ``collation_key()`` — a sort key in Ukrainian alphabetical order.
+  Unicode orders ``і`` after ``я``, which buries every ``Бі...`` name at
+  the end of a plain sort.
+- A word-start tier in the ranking, between prefix and substring:
+  ``Збур'ївка`` reaches ``Нова Збур'ївка`` ahead of ``Новозбур'ївка``.
+- ``normalize()`` and ``normalize_query()`` are exported. A caller that
+  enforces a minimum query length needs the query the library will
+  actually search for: ``normalize_query("м.")`` is empty, because the
+  settlement type is not part of a name.
+
+Changed
+
+- Names are ordered with ``collation_key`` everywhere the library sorts
+  them, so ``Білоцерківський`` precedes ``Бориспільський``.
+- Within a tier the broader object now comes before the shorter name:
+  ``Іва`` answers with Івано-Франківськ rather than the village Івахи.
+  Unfiltered, ``Херсо`` answers with the oblast; ``find_settlements``
+  answers the same query with the city.
+
 v1.0.0 (2026-10-12)
 ...................
 
